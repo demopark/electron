@@ -8,6 +8,8 @@
 #include <set>
 #include <sstream>
 
+using base::PlatformThreadRef;
+
 #include "base/hash.h"
 #include "base/logging.h"
 #include "base/strings/string_number_conversions.h"
@@ -214,6 +216,10 @@ void NativeDesktopMediaList::Worker::Refresh(
   BrowserThread::PostTask(
       BrowserThread::UI, FROM_HERE,
       base::Bind(&NativeDesktopMediaList::OnRefreshFinished, media_list_));
+
+  // Destroy capturers when done.
+  screen_capturer_.reset();
+  window_capturer_.reset();
 }
 
 void NativeDesktopMediaList::Worker::OnCaptureResult(

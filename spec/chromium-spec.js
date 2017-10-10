@@ -1,9 +1,10 @@
 const assert = require('assert')
+const fs = require('fs')
 const http = require('http')
 const path = require('path')
 const ws = require('ws')
 const url = require('url')
-const {ipcRenderer, remote} = require('electron')
+const {ipcRenderer, remote, webFrame} = require('electron')
 const {closeWindow} = require('./window-helpers')
 
 const {app, BrowserWindow, ipcMain, protocol, session, webContents} = remote
@@ -13,6 +14,7 @@ const isCI = remote.getGlobal('isCi')
 describe('chromium feature', function () {
   var fixtures = path.resolve(__dirname, 'fixtures')
   var listener = null
+  let w = null
 
   afterEach(function () {
     if (listener != null) {
@@ -21,8 +23,13 @@ describe('chromium feature', function () {
     listener = null
   })
 
-  xdescribe('heap snapshot', function () {
+  afterEach(function () {
+    return closeWindow(w).then(function () { w = null })
+  })
+
+  describe('heap snapshot', function () {
     it('does not crash', function () {
+      if (process.env.TRAVIS === 'true') return
       process.atomBinding('v8_util').takeHeapSnapshot()
     })
   })
@@ -41,40 +48,6 @@ describe('chromium feature', function () {
     })
   })
 
-  describe('document.hidden', function () {
-    var url = 'file://' + fixtures + '/pages/document-hidden.html'
-    var w = null
-
-    afterEach(function () {
-      return closeWindow(w).then(function () { w = null })
-    })
-
-    it('is set correctly when window is not shown', function (done) {
-      w = new BrowserWindow({
-        show: false
-      })
-      w.webContents.once('ipc-message', function (event, args) {
-        assert.deepEqual(args, ['hidden', true])
-        done()
-      })
-      w.loadURL(url)
-    })
-
-    it('is set correctly when window is inactive', function (done) {
-      if (isCI && process.platform === 'win32') return done()
-
-      w = new BrowserWindow({
-        show: false
-      })
-      w.webContents.once('ipc-message', function (event, args) {
-        assert.deepEqual(args, ['hidden', false])
-        done()
-      })
-      w.showInactive()
-      w.loadURL(url)
-    })
-  })
-
   xdescribe('navigator.webkitGetUserMedia', function () {
     it('calls its callbacks', function (done) {
       navigator.webkitGetUserMedia({
@@ -89,13 +62,7 @@ describe('chromium feature', function () {
   })
 
   describe('navigator.mediaDevices', function () {
-    if (process.env.TRAVIS === 'true') {
-      return
-    }
-    if (isCI && process.platform === 'linux') {
-      return
-    }
-    if (isCI && process.platform === 'win32') {
+    if (isCI) {
       return
     }
 
@@ -106,7 +73,7 @@ describe('chromium feature', function () {
         if (labelFound) {
           done()
         } else {
-          done('No device labels found: ' + JSON.stringify(labels))
+          done(new Error(`No device labels found: ${JSON.stringify(labels)}`))
         }
       }).catch(done)
     })
@@ -118,7 +85,7 @@ describe('chromium feature', function () {
       }
       const deviceIds = []
       const ses = session.fromPartition('persist:media-device-id')
-      let w = new BrowserWindow({
+      w = new BrowserWindow({
         show: false,
         webPreferences: {
           session: ses
@@ -153,13 +120,6 @@ describe('chromium feature', function () {
   })
 
   describe('navigator.serviceWorker', function () {
-    var url = 'file://' + fixtures + '/pages/service-worker/index.html'
-    var w = null
-
-    afterEach(function () {
-      return closeWindow(w).then(function () { w = null })
-    })
-
     it('should register for file scheme', function (done) {
       w = new BrowserWindow({
         show: false
@@ -178,7 +138,49 @@ describe('chromium feature', function () {
           })
         }
       })
-      w.loadURL(url)
+      w.loadURL(`file://${fixtures}/pages/service-worker/index.html`)
+    })
+
+    it('should register for intercepted file scheme', function (done) {
+      const customSession = session.fromPartition('intercept-file')
+      customSession.protocol.interceptBufferProtocol('file', function (request, callback) {
+        let file = url.parse(request.url).pathname
+        // Remove leading slash before drive letter on Windows
+        if (file[0] === '/' && process.platform === 'win32') {
+          file = file.slice(1)
+        }
+        const content = fs.readFileSync(path.normalize(file))
+        const ext = path.extname(file)
+        let type = 'text/html'
+        if (ext === '.js') {
+          type = 'application/javascript'
+        }
+        callback({data: content, mimeType: type})
+      }, function (error) {
+        if (error) done(error)
+      })
+
+      w = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          session: customSession
+        }
+      })
+      w.webContents.on('ipc-message', function (event, args) {
+        if (args[0] === 'reload') {
+          w.webContents.reload()
+        } else if (args[0] === 'error') {
+          done('unexpected error : ' + args[1])
+        } else if (args[0] === 'response') {
+          assert.equal(args[1], 'Hello from serviceWorker!')
+          customSession.clearStorageData({
+            storages: ['serviceworkers']
+          }, function () {
+            customSession.protocol.uninterceptProtocol('file', (error) => done(error))
+          })
+        }
+      })
+      w.loadURL(`file://${fixtures}/pages/service-worker/index.html`)
     })
   })
 
@@ -186,12 +188,6 @@ describe('chromium feature', function () {
     if (process.env.TRAVIS === 'true' && process.platform === 'darwin') {
       return
     }
-
-    let w = null
-
-    afterEach(() => {
-      return closeWindow(w).then(function () { w = null })
-    })
 
     it('returns a BrowserWindowProxy object', function () {
       var b = window.open('about:blank', '', 'show=no')
@@ -243,6 +239,65 @@ describe('chromium feature', function () {
         slashes: true
       })
       b = window.open(windowUrl, '', 'nodeIntegration=no,show=no')
+    })
+
+    it('disables node integration when it is disabled on the parent window for chrome devtools URLs', function (done) {
+      var b
+      app.once('web-contents-created', (event, contents) => {
+        contents.once('did-finish-load', () => {
+          contents.executeJavaScript('typeof process').then((typeofProcessGlobal) => {
+            assert.equal(typeofProcessGlobal, 'undefined')
+            b.close()
+            done()
+          }).catch(done)
+        })
+      })
+      b = window.open('chrome-devtools://devtools/bundled/inspector.html', '', 'nodeIntegration=no,show=no')
+    })
+
+    it('disables JavaScript when it is disabled on the parent window', function (done) {
+      var b
+      app.once('web-contents-created', (event, contents) => {
+        contents.once('did-finish-load', () => {
+          app.once('browser-window-created', (event, window) => {
+            const preferences = window.webContents.getWebPreferences()
+            assert.equal(preferences.javascript, false)
+            window.destroy()
+            b.close()
+            done()
+          })
+          // Click link on page
+          contents.sendInputEvent({type: 'mouseDown', clickCount: 1, x: 1, y: 1})
+          contents.sendInputEvent({type: 'mouseUp', clickCount: 1, x: 1, y: 1})
+        })
+      })
+
+      var windowUrl = require('url').format({
+        pathname: `${fixtures}/pages/window-no-javascript.html`,
+        protocol: 'file',
+        slashes: true
+      })
+      b = window.open(windowUrl, '', 'javascript=no,show=no')
+    })
+
+    it('disables the <webview> tag when it is disabled on the parent window', function (done) {
+      let b
+      listener = function (event) {
+        assert.equal(event.data.isWebViewGlobalUndefined, true)
+        b.close()
+        done()
+      }
+      window.addEventListener('message', listener)
+
+      var windowUrl = require('url').format({
+        pathname: `${fixtures}/pages/window-opener-no-webview-tag.html`,
+        protocol: 'file',
+        query: {
+          p: `${fixtures}/pages/window-opener-webview.html`
+        },
+        slashes: true
+      })
+      b = window.open(windowUrl, '', 'webviewTag=no,nodeIntegration=yes,show=no')
     })
 
     it('does not override child options', function (done) {
@@ -338,15 +393,48 @@ describe('chromium feature', function () {
       })
       b = window.open()
     })
+
+    it('throws an exception when the arguments cannot be converted to strings', function () {
+      assert.throws(function () {
+        window.open('', {toString: null})
+      }, /Cannot convert object to primitive value/)
+
+      assert.throws(function () {
+        window.open('', '', {toString: 3})
+      }, /Cannot convert object to primitive value/)
+    })
+
+    it('sets the window title to the specified frameName', function (done) {
+      let b
+      app.once('browser-window-created', (event, createdWindow) => {
+        assert.equal(createdWindow.getTitle(), 'hello')
+        b.close()
+        done()
+      })
+      b = window.open('', 'hello')
+    })
+
+    it('does not throw an exception when the frameName is a built-in object property', function (done) {
+      let b
+      app.once('browser-window-created', (event, createdWindow) => {
+        assert.equal(createdWindow.getTitle(), '__proto__')
+        b.close()
+        done()
+      })
+      b = window.open('', '__proto__')
+    })
+
+    it('does not throw an exception when the features include webPreferences', function () {
+      let b
+      assert.doesNotThrow(function () {
+        b = window.open('', '', 'webPreferences=')
+      })
+      b.close()
+    })
   })
 
   describe('window.opener', function () {
     let url = 'file://' + fixtures + '/pages/window-opener.html'
-    let w = null
-
-    afterEach(function () {
-      return closeWindow(w).then(function () { w = null })
-    })
 
     it('is null for main window', function (done) {
       w = new BrowserWindow({
@@ -520,6 +608,14 @@ describe('chromium feature', function () {
       })
       b = window.open('file://' + fixtures + '/pages/window-open-postMessage.html', '', 'show=no')
     })
+
+    it('throws an exception when the targetOrigin cannot be converted to a string', function () {
+      var b = window.open('')
+      assert.throws(function () {
+        b.postMessage('test', {toString: null})
+      }, /Cannot convert object to primitive value/)
+      b.close()
+    })
   })
 
   describe('window.opener.postMessage', function () {
@@ -553,6 +649,39 @@ describe('chromium feature', function () {
         slashes: true
       })
       document.body.appendChild(webview)
+    })
+
+    describe('targetOrigin argument', function () {
+      let serverURL
+      let server
+
+      beforeEach(function (done) {
+        server = http.createServer(function (req, res) {
+          res.writeHead(200)
+          const filePath = path.join(fixtures, 'pages', 'window-opener-targetOrigin.html')
+          res.end(fs.readFileSync(filePath, 'utf8'))
+        })
+        server.listen(0, '127.0.0.1', function () {
+          serverURL = `http://127.0.0.1:${server.address().port}`
+          done()
+        })
+      })
+
+      afterEach(function () {
+        server.close()
+      })
+
+      it('delivers messages that match the origin', function (done) {
+        let b
+        listener = function (event) {
+          window.removeEventListener('message', listener)
+          b.close()
+          assert.equal(event.data, 'deliver')
+          done()
+        }
+        window.addEventListener('message', listener)
+        b = window.open(serverURL, '', 'show=no')
+      })
     })
   })
 
@@ -589,6 +718,27 @@ describe('chromium feature', function () {
       worker.postMessage(message)
     })
 
+    it('Worker has no node integration by default', function (done) {
+      let worker = new Worker('../fixtures/workers/worker_node.js')
+      worker.onmessage = function (event) {
+        assert.equal(event.data, 'undefined undefined undefined undefined')
+        worker.terminate()
+        done()
+      }
+    })
+
+    it('Worker has node integration with nodeIntegrationInWorker', function (done) {
+      let webview = new WebView()
+      webview.addEventListener('ipc-message', function (e) {
+        assert.equal(e.channel, 'object function object function')
+        webview.remove()
+        done()
+      })
+      webview.src = 'file://' + fixtures + '/pages/worker.html'
+      webview.setAttribute('webpreferences', 'nodeIntegration, nodeIntegrationInWorker')
+      document.body.appendChild(webview)
+    })
+
     it('SharedWorker can work', function (done) {
       var worker = new SharedWorker('../fixtures/workers/shared_worker.js')
       var message = 'ping'
@@ -597,6 +747,29 @@ describe('chromium feature', function () {
         done()
       }
       worker.port.postMessage(message)
+    })
+
+    it('SharedWorker has no node integration by default', function (done) {
+      let worker = new SharedWorker('../fixtures/workers/shared_worker_node.js')
+      worker.port.onmessage = function (event) {
+        assert.equal(event.data, 'undefined undefined undefined undefined')
+        done()
+      }
+    })
+
+    it('SharedWorker has node integration with nodeIntegrationInWorker', function (done) {
+      let webview = new WebView()
+      webview.addEventListener('console-message', function (e) {
+        console.log(e)
+      })
+      webview.addEventListener('ipc-message', function (e) {
+        assert.equal(e.channel, 'object function object function')
+        webview.remove()
+        done()
+      })
+      webview.src = 'file://' + fixtures + '/pages/shared_worker.html'
+      webview.setAttribute('webpreferences', 'nodeIntegration, nodeIntegrationInWorker')
+      document.body.appendChild(webview)
     })
   })
 
@@ -799,6 +972,150 @@ describe('chromium feature', function () {
         }).catch(function (e) {
           done(e)
         })
+      })
+    })
+  })
+
+  describe('PDF Viewer', function () {
+    const pdfSource = url.format({
+      pathname: path.join(fixtures, 'assets', 'cat.pdf').replace(/\\/g, '/'),
+      protocol: 'file',
+      slashes: true
+    })
+    const pdfSourceWithParams = url.format({
+      pathname: path.join(fixtures, 'assets', 'cat.pdf').replace(/\\/g, '/'),
+      query: {
+        a: 1,
+        b: 2
+      },
+      protocol: 'file',
+      slashes: true
+    })
+
+    function createBrowserWindow ({plugins}) {
+      w = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          preload: path.join(fixtures, 'module', 'preload-pdf-loaded.js'),
+          plugins: plugins
+        }
+      })
+    }
+
+    it('opens when loading a pdf resource as top level navigation', function (done) {
+      createBrowserWindow({plugins: true})
+      ipcMain.once('pdf-loaded', function (event, state) {
+        assert.equal(state, 'success')
+        done()
+      })
+      w.webContents.on('page-title-updated', function () {
+        const parsedURL = url.parse(w.webContents.getURL(), true)
+        assert.equal(parsedURL.protocol, 'chrome:')
+        assert.equal(parsedURL.hostname, 'pdf-viewer')
+        assert.equal(parsedURL.query.src, pdfSource)
+        assert.equal(w.webContents.getTitle(), 'cat.pdf')
+      })
+      w.webContents.loadURL(pdfSource)
+    })
+
+    it('opens a pdf link given params, the query string should be escaped', function (done) {
+      createBrowserWindow({plugins: true})
+      ipcMain.once('pdf-loaded', function (event, state) {
+        assert.equal(state, 'success')
+        done()
+      })
+      w.webContents.on('page-title-updated', function () {
+        const parsedURL = url.parse(w.webContents.getURL(), true)
+        assert.equal(parsedURL.protocol, 'chrome:')
+        assert.equal(parsedURL.hostname, 'pdf-viewer')
+        assert.equal(parsedURL.query.src, pdfSourceWithParams)
+        assert.equal(parsedURL.query.b, undefined)
+        assert.equal(parsedURL.search, `?src=${pdfSource}%3Fa%3D1%26b%3D2`)
+        assert.equal(w.webContents.getTitle(), 'cat.pdf')
+      })
+      w.webContents.loadURL(pdfSourceWithParams)
+    })
+
+    it('should download a pdf when plugins are disabled', function (done) {
+      createBrowserWindow({plugins: false})
+      ipcRenderer.sendSync('set-download-option', false, false)
+      ipcRenderer.once('download-done', function (event, state, url, mimeType, receivedBytes, totalBytes, disposition, filename) {
+        assert.equal(state, 'completed')
+        assert.equal(filename, 'cat.pdf')
+        assert.equal(mimeType, 'application/pdf')
+        fs.unlinkSync(path.join(fixtures, 'mock.pdf'))
+        done()
+      })
+      w.webContents.loadURL(pdfSource)
+    })
+
+    it('should not open when pdf is requested as sub resource', function (done) {
+      createBrowserWindow({plugins: true})
+      webFrame.registerURLSchemeAsPrivileged('file', {
+        secure: false,
+        bypassCSP: false,
+        allowServiceWorkers: false,
+        corsEnabled: false
+      })
+      fetch(pdfSource).then(function (res) {
+        assert.equal(res.status, 200)
+        assert.notEqual(document.title, 'cat.pdf')
+        done()
+      }).catch(function (e) {
+        done(e)
+      })
+    })
+  })
+
+  describe('window.alert(message, title)', function () {
+    it('throws an exception when the arguments cannot be converted to strings', function () {
+      assert.throws(function () {
+        window.alert({toString: null})
+      }, /Cannot convert object to primitive value/)
+
+      assert.throws(function () {
+        window.alert('message', {toString: 3})
+      }, /Cannot convert object to primitive value/)
+    })
+  })
+
+  describe('window.confirm(message, title)', function () {
+    it('throws an exception when the arguments cannot be converted to strings', function () {
+      assert.throws(function () {
+        window.confirm({toString: null}, 'title')
+      }, /Cannot convert object to primitive value/)
+
+      assert.throws(function () {
+        window.confirm('message', {toString: 3})
+      }, /Cannot convert object to primitive value/)
+    })
+  })
+
+  describe('window.history', function () {
+    describe('window.history.go(offset)', function () {
+      it('throws an exception when the argumnet cannot be converted to a string', function () {
+        assert.throws(function () {
+          window.history.go({toString: null})
+        }, /Cannot convert object to primitive value/)
+      })
+    })
+
+    describe('window.history.pushState', function () {
+      it('should push state after calling history.pushState() from the same url', (done) => {
+        w = new BrowserWindow({
+          show: false
+        })
+        w.webContents.once('did-finish-load', () => {
+          // History should have current page by now.
+          assert.equal(w.webContents.length(), 1)
+
+          w.webContents.executeJavaScript('window.history.pushState({}, "")', () => {
+            // Initial page + pushed state
+            assert.equal(w.webContents.length(), 2)
+            done()
+          })
+        })
+        w.loadURL('about:blank')
       })
     })
   })

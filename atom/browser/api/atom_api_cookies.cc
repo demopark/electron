@@ -62,6 +62,10 @@ struct Converter<net::CookieStore::ChangeCause> {
     switch (val) {
       case net::CookieStore::ChangeCause::INSERTED:
       case net::CookieStore::ChangeCause::EXPLICIT:
+      case net::CookieStore::ChangeCause::EXPLICIT_DELETE_BETWEEN:
+      case net::CookieStore::ChangeCause::EXPLICIT_DELETE_PREDICATE:
+      case net::CookieStore::ChangeCause::EXPLICIT_DELETE_SINGLE:
+      case net::CookieStore::ChangeCause::EXPLICIT_DELETE_CANONICAL:
         return mate::StringToV8(isolate, "explicit");
       case net::CookieStore::ChangeCause::OVERWRITE:
         return mate::StringToV8(isolate, "overwrite");
@@ -179,6 +183,13 @@ void OnSetCookie(const Cookies::SetCallback& callback, bool success) {
       base::Bind(callback, success ? Cookies::SUCCESS : Cookies::FAILED));
 }
 
+// Flushes cookie store in IO thread.
+void FlushCookieStoreOnIOThread(
+    scoped_refptr<net::URLRequestContextGetter> getter,
+    const base::Closure& callback) {
+  GetCookieStore(getter)->FlushStore(base::Bind(RunCallbackInUI, callback));
+}
+
 // Sets cookie with |details| in IO thread.
 void SetCookieOnIO(scoped_refptr<net::URLRequestContextGetter> getter,
                    std::unique_ptr<base::DictionaryValue> details,
@@ -221,8 +232,8 @@ void SetCookieOnIO(scoped_refptr<net::URLRequestContextGetter> getter,
   GetCookieStore(getter)->SetCookieWithDetailsAsync(
       GURL(url), name, value, domain, path, creation_time,
       expiration_time, last_access_time, secure, http_only,
-      net::CookieSameSite::DEFAULT_MODE, false,
-      net::COOKIE_PRIORITY_DEFAULT, base::Bind(OnSetCookie, callback));
+      net::CookieSameSite::DEFAULT_MODE, net::COOKIE_PRIORITY_DEFAULT,
+      base::Bind(OnSetCookie, callback));
 }
 
 }  // namespace
@@ -265,6 +276,13 @@ void Cookies::Set(const base::DictionaryValue& details,
       base::Bind(SetCookieOnIO, getter, Passed(&copied), callback));
 }
 
+void Cookies::FlushStore(const base::Closure& callback) {
+  auto getter = make_scoped_refptr(request_context_getter_);
+  content::BrowserThread::PostTask(
+      BrowserThread::IO, FROM_HERE,
+      base::Bind(FlushCookieStoreOnIOThread, getter, callback));
+}
+
 void Cookies::OnCookieChanged(const net::CanonicalCookie& cookie,
                               bool removed,
                               net::CookieStore::ChangeCause cause) {
@@ -286,7 +304,8 @@ void Cookies::BuildPrototype(v8::Isolate* isolate,
   mate::ObjectTemplateBuilder(isolate, prototype->PrototypeTemplate())
       .SetMethod("get", &Cookies::Get)
       .SetMethod("remove", &Cookies::Remove)
-      .SetMethod("set", &Cookies::Set);
+      .SetMethod("set", &Cookies::Set)
+      .SetMethod("flushStore", &Cookies::FlushStore);
 }
 
 }  // namespace api

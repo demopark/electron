@@ -16,26 +16,15 @@
 
 namespace atom {
 
-namespace {
-
-// Filter out the "&" in menu label.
-base::string16 FilterAccelerator(const base::string16& label) {
-  base::string16 out;
-  base::RemoveChars(label, base::ASCIIToUTF16("&").c_str(), &out);
-  return out;
-}
-
-}  // namespace
-
 SubmenuButton::SubmenuButton(const base::string16& title,
                              views::MenuButtonListener* menu_button_listener,
                              const SkColor& background_color)
-    : views::MenuButton(FilterAccelerator(title),
+    : views::MenuButton(gfx::RemoveAcceleratorChar(title, '&', NULL, NULL),
                         menu_button_listener, false),
       accelerator_(0),
       show_underline_(false),
-      underline_start_(-1),
-      underline_end_(-1),
+      underline_start_(0),
+      underline_end_(0),
       text_width_(0),
       text_height_(0),
       underline_color_(SK_ColorBLACK),
@@ -47,7 +36,7 @@ SubmenuButton::SubmenuButton(const base::string16& title,
 
   if (GetUnderlinePosition(title, &accelerator_, &underline_start_,
                            &underline_end_))
-    gfx::Canvas::SizeStringInt(GetText(), GetFontList(), &text_width_,
+    gfx::Canvas::SizeStringInt(GetText(), gfx::FontList(), &text_width_,
                                &text_height_, 0, 0);
 
   SetInkDropMode(InkDropMode::ON);
@@ -117,9 +106,9 @@ bool SubmenuButton::GetUnderlinePosition(const base::string16& text,
 
 void SubmenuButton::GetCharacterPosition(
     const base::string16& text, int index, int* pos) {
-  int height;
-  gfx::Canvas::SizeStringInt(text.substr(0, index), GetFontList(), pos, &height,
-                             0, 0);
+  int height = 0;
+  gfx::Canvas::SizeStringInt(text.substr(0, index), gfx::FontList(), pos,
+                             &height, 0, 0);
 }
 
 }  // namespace atom

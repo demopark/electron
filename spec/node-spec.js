@@ -85,17 +85,35 @@ describe('node feature', function () {
         child.stdout.on('data', (chunk) => {
           data += String(chunk)
         })
-        child.on('exit', (code) => {
+        child.on('close', (code) => {
           assert.equal(code, 0)
           assert.equal(data, 'pipes stdio')
           done()
         })
       })
+
+      it('works when sending a message to a process forked with the --eval argument', function (done) {
+        const source = "process.on('message', (message) => { process.send(message) })"
+        const forked = ChildProcess.fork('--eval', [source])
+        forked.once('message', (message) => {
+          assert.equal(message, 'hello')
+          done()
+        })
+        forked.send('hello')
+      })
     })
 
     describe('child_process.spawn', function () {
+      let child
+
+      afterEach(function () {
+        if (child != null) {
+          child.kill()
+        }
+      })
+
       it('supports spawning Electron as a node process via the ELECTRON_RUN_AS_NODE env var', function (done) {
-        const child = ChildProcess.spawn(process.execPath, [path.join(__dirname, 'fixtures', 'module', 'run-as-node.js')], {
+        child = ChildProcess.spawn(process.execPath, [path.join(__dirname, 'fixtures', 'module', 'run-as-node.js')], {
           env: {
             ELECTRON_RUN_AS_NODE: true
           }
@@ -112,6 +130,27 @@ describe('node feature', function () {
             window: 'undefined'
           })
           done()
+        })
+      })
+
+      it('supports starting the v8 inspector with --inspect/--inspect-brk', function (done) {
+        child = ChildProcess.spawn(process.execPath, ['--inspect-brk', path.join(__dirname, 'fixtures', 'module', 'run-as-node.js')], {
+          env: {
+            ELECTRON_RUN_AS_NODE: true
+          }
+        })
+
+        let output = ''
+        child.stderr.on('data', function (data) {
+          output += data
+
+          if (output.trim().startsWith('Debugger listening on ws://')) {
+            done()
+          }
+        })
+
+        child.stdout.on('data', function (data) {
+          done(new Error(`Unexpected output: ${data.toString()}`))
         })
       })
     })

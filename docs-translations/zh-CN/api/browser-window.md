@@ -200,7 +200,6 @@ child.once('ready-to-show', () => {
 * `experimentalFeatures` Boolean - 开启 Chromium 的 可测试 特性.
   默认为 `false`.
 * `experimentalCanvasFeatures` Boolean - 开启 Chromium 的 canvas 可测试特性. 默认为 `false`.
-* `directWrite` Boolean - 开启窗口的 DirectWrite font 渲染系统. 默认为 `true`.
 * `blinkFeatures` String - 以 `,` 分隔的特性列表, 如
   `CSSVariables,KeyboardEventKey`. 被支持的所有特性可在 [setFeatureEnabledFromString][blink-feature-string]
   中找到.
@@ -839,7 +838,7 @@ windows上句柄类型为 `HWND` ，macOS `NSView*` ， Linux `Window`.
 忽略窗口的所有鼠标事件.
 
 
-[blink-feature-string]: https://cs.chromium.org/chromium/src/third_party/WebKit/Source/platform/RuntimeEnabledFeatures.in
+[blink-feature-string]: https://cs.chromium.org/chromium/src/third_party/WebKit/Source/platform/RuntimeEnabledFeatures.json5?l=62
 [quick-look]: https://en.wikipedia.org/wiki/Quick_Look
 [vibrancy-docs]: https://developer.apple.com/reference/appkit/nsvisualeffectview?language=objc
 [window-levels]: https://developer.apple.com/reference/appkit/nswindow/1664726-window_levels

@@ -80,7 +80,6 @@ Ela cria uma nova `BrowserWindow` com propriedades nativas definidas pelo `optio
   * `overlayScrollbars` Boolean - Habilita sobreposição das barras de rolagem. O padrão é `false`.
   * `overlayFullscreenVideo` Boolean - Habilita sobreposição do vídeo em tela cheia. O padrão é `false`.
   * `sharedWorker` Boolean - Habilita suporte a *Shared Worker*. O padrão é `false`.
-  * `directWrite` Boolean - Habilita o sistema de renderização de fontes *DirectWrite* no Windows. O padrão é `true`.
   * `pageVisibility` Boolean - A página é forçada a permanecer visível ou oculta quando definido, em vez de refletir a visibilidade atual da janela. Usuários podem definir como `true` para evitar que os temporizadores do *DOM* sejam suprimidos. O padrão é `false`.
 
 ## Eventos
@@ -227,15 +226,15 @@ Acha uma janela de acordo com o seu ID.
 
 * `path` String
 
-Adiciona a extenção DevTools localizada no endereço `path`, e retorna o nome da extenção.
+Adiciona a extensão DevTools localizada no endereço `path`, e retorna o nome da extensão.
 
-A extenção será lembrada, então você só precisa chamar esta API uma vez, esta API não é para uso de programação.
+A extensão será lembrada, então você só precisa chamar esta API uma vez, esta API não é para uso de programação.
 
 ### `BrowserWindow.removeDevToolsExtension(name)`
 
 * `name` String
 
-Remove a extenção DevTools cujo nome é `name`.
+Remove a extensão DevTools cujo nome é `name`.
 
 ## Propriedades de Instância
 

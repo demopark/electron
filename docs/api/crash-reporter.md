@@ -40,12 +40,13 @@ The `crashReporter` module has the following methods:
   * `companyName` String (optional)
   * `submitURL` String - URL that crash reports will be sent to as POST.
   * `productName` String (optional) - Defaults to `app.getName()`.
-  * `uploadToServer` Boolean (optional) _macOS_ - Whether crash reports should be sent to the server
+  * `uploadToServer` Boolean (optional) - Whether crash reports should be sent to the server
     Default is `true`.
   * `ignoreSystemCrashHandler` Boolean (optional) - Default is `false`.
   * `extra` Object (optional) - An object you can define that will be sent along with the
     report. Only string properties are sent correctly. Nested objects are not
-    supported.
+    supported and the property names and values must be less than 64 characters long.
+  * `crashesDirectory` String (optional) - Directory to store the crashreports temporarily (only used when the crash reporter is started via `process.crashReporter.start`)
 
 You are required to call this method before using any other `crashReporter` APIs
 and in each process (main/renderer) from which you want to collect crash reports.
@@ -99,14 +100,14 @@ Returns [`CrashReport[]`](structures/crash-report.md):
 Returns all uploaded crash reports. Each report contains the date and uploaded
 ID.
 
-### `crashReporter.getUploadToServer()` _macOS_
+### `crashReporter.getUploadToServer()` _Linux_ _macOS_
 
 Returns `Boolean` - Whether reports should be submitted to the server.  Set through
 the `start` method or `setUploadToServer`.
 
 **Note:** This API can only be called from the main process.
 
-### `crashReporter.setUploadToServer(uploadToServer)` _macOS_
+### `crashReporter.setUploadToServer(uploadToServer)` _Linux_ _macOS_
 
 * `uploadToServer` Boolean _macOS_ - Whether reports should be submitted to the server
 
@@ -117,11 +118,12 @@ called before `start` is called.
 
 ### `crashReporter.setExtraParameter(key, value)` _macOS_
 
-* `key` String - Parameter key.
-* `value` String - Parameter value. Specifying `null` or `undefined` will
-  remove the key from the extra parameters.
+* `key` String - Parameter key, must be less than 64 characters long.
+* `value` String - Parameter value, must be less than 64 characters long.
+  Specifying `null` or `undefined` will remove the key from the extra
+  parameters.
 
-Set an extra parameter to set be sent with the crash report. The values
+Set an extra parameter to be sent with the crash report. The values
 specified here will be sent in addition to any values set via the `extra` option
 when `start` was called. This API is only available on macOS, if you need to
 add/update extra parameters on Linux and Windows after your first call to

@@ -4,9 +4,11 @@
 
 #include "osfhandle.h"
 
-#include <io.h>
-
+#if !defined(DEBUG)
 #define U_I18N_IMPLEMENTATION
+#define U_COMMON_IMPLEMENTATION
+#define U_COMBINED_IMPLEMENTATION
+#endif
 
 #include "third_party/icu/source/common/unicode/ubidi.h"
 #include "third_party/icu/source/common/unicode/uchar.h"
@@ -15,6 +17,7 @@
 #include "third_party/icu/source/common/unicode/unorm.h"
 #include "third_party/icu/source/common/unicode/urename.h"
 #include "third_party/icu/source/common/unicode/ustring.h"
+#include "third_party/icu/source/i18n/unicode/dtitvfmt.h"
 #include "third_party/icu/source/i18n/unicode/measfmt.h"
 #include "third_party/icu/source/i18n/unicode/translit.h"
 #include "third_party/icu/source/i18n/unicode/ucsdet.h"
@@ -26,14 +29,6 @@
 #include "v8-inspector.h"
 
 namespace node {
-
-int open_osfhandle(intptr_t osfhandle, int flags) {
-  return _open_osfhandle(osfhandle, flags);
-}
-
-int close(int fd) {
-  return _close(fd);
-}
 
 void ReferenceSymbols() {
   // Following symbols are used by electron.exe but got stripped by compiler,
@@ -60,6 +55,9 @@ void ReferenceSymbols() {
   UMeasureFormatWidth width = UMEASFMT_WIDTH_WIDE;
   UErrorCode status = U_ZERO_ERROR;
   icu::MeasureFormat format(icu::Locale::getRoot(), width, status);
+  icu::DateInterval internal(0, 0);
+  icu::DateIntervalFormat::createInstance(UnicodeString(),
+                                          icu::Locale::getRoot(), status);
   reinterpret_cast<icu::Transliterator*>(nullptr)->clone();
 }
 

@@ -67,11 +67,12 @@ PrintViewManagerBase::~PrintViewManagerBase() {
 
 #if !defined(DISABLE_BASIC_PRINTING)
 bool PrintViewManagerBase::PrintNow(content::RenderFrameHost* rfh,
-                                    bool silent, bool print_background) {
+                                    bool silent, bool print_background,
+                                    const base::string16& device_name) {
   int32_t id = rfh->GetRoutingID();
   return PrintNowInternal(
       rfh,
-      base::MakeUnique<PrintMsg_PrintPages>(id, silent, print_background));
+      base::MakeUnique<PrintMsg_PrintPages>(id, silent, print_background, device_name));
 }
 #endif  // !DISABLE_BASIC_PRINTING
 
@@ -159,6 +160,7 @@ void PrintViewManagerBase::OnDidPrintPage(
 
   ShouldQuitFromInnerMessageLoop();
 #else
+  print_job_->AppendPrintedPage(params.page_number);
   if (metafile_must_be_valid) {
     bool print_text_with_gdi =
         document->settings().print_text_with_gdi() &&
@@ -375,9 +377,12 @@ void PrintViewManagerBase::DisconnectFromCurrentPrintJob() {
 }
 
 void PrintViewManagerBase::PrintingDone(bool success) {
-  if (!print_job_.get())
-    return;
-  Send(new PrintMsg_PrintingDone(routing_id(), success));
+  if (print_job_.get()) {
+    Send(new PrintMsg_PrintingDone(routing_id(), success));
+  }
+  if (!callback.is_null()) {
+    callback.Run(success && print_job_);
+  }
 }
 
 void PrintViewManagerBase::TerminatePrintJob(bool cancel) {

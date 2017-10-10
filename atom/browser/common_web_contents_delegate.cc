@@ -9,12 +9,12 @@
 #include <vector>
 
 #include "atom/browser/atom_browser_context.h"
-#include "atom/browser/atom_javascript_dialog_manager.h"
 #include "atom/browser/native_window.h"
 #include "atom/browser/ui/file_dialog.h"
 #include "atom/browser/web_dialog_helper.h"
 #include "atom/common/atom_constants.h"
 #include "base/files/file_util.h"
+#include "base/memory/ptr_util.h"
 #include "chrome/browser/printing/print_preview_message_handler.h"
 #include "chrome/browser/printing/print_view_manager_basic.h"
 #include "chrome/browser/ssl/security_state_tab_helper.h"
@@ -150,7 +150,8 @@ bool IsDevToolsFileSystemAdded(
 }  // namespace
 
 CommonWebContentsDelegate::CommonWebContentsDelegate()
-    : html_fullscreen_(false),
+    : ignore_menu_shortcuts_(false),
+      html_fullscreen_(false),
       native_fullscreen_(false),
       devtools_file_system_indexer_(new DevToolsFileSystemIndexer) {
 }
@@ -178,13 +179,23 @@ void CommonWebContentsDelegate::SetOwnerWindow(NativeWindow* owner_window) {
 
 void CommonWebContentsDelegate::SetOwnerWindow(
     content::WebContents* web_contents, NativeWindow* owner_window) {
-  owner_window_ = owner_window->GetWeakPtr();
+  owner_window_ = owner_window ? owner_window->GetWeakPtr() : nullptr;
   NativeWindowRelay* relay = new NativeWindowRelay(owner_window_);
-  web_contents->SetUserData(relay->key, relay);
+  if (owner_window) {
+    web_contents->SetUserData(relay->key, relay);
+  } else {
+    web_contents->RemoveUserData(relay->key);
+    delete relay;
+  }
 }
 
-void CommonWebContentsDelegate::DestroyWebContents() {
-  web_contents_.reset();
+void CommonWebContentsDelegate::ResetManagedWebContents(bool async) {
+  if (async) {
+    base::ThreadTaskRunnerHandle::Get()->DeleteSoon(FROM_HERE,
+                                                    web_contents_.release());
+  } else {
+    web_contents_.reset();
+  }
 }
 
 content::WebContents* CommonWebContentsDelegate::GetWebContents() const {
@@ -218,15 +229,6 @@ content::WebContents* CommonWebContentsDelegate::OpenURLFromTab(
 
 bool CommonWebContentsDelegate::CanOverscrollContent() const {
   return false;
-}
-
-content::JavaScriptDialogManager*
-CommonWebContentsDelegate::GetJavaScriptDialogManager(
-    content::WebContents* source) {
-  if (!dialog_manager_)
-    dialog_manager_.reset(new AtomJavaScriptDialogManager);
-
-  return dialog_manager_.get();
 }
 
 content::ColorChooser* CommonWebContentsDelegate::OpenColorChooser(
@@ -299,7 +301,7 @@ void CommonWebContentsDelegate::DevToolsSaveToFile(
     settings.title = url;
     settings.default_path = base::FilePath::FromUTF8Unsafe(url);
     if (!file_dialog::ShowSaveDialog(settings, &path)) {
-      base::StringValue url_value(url);
+      base::Value url_value(url);
       web_contents_->CallClientFunction(
           "DevToolsAPI.canceledSaveURL", &url_value, nullptr, nullptr);
       return;
@@ -338,7 +340,7 @@ void CommonWebContentsDelegate::DevToolsRequestFileSystems() {
   }
 
   std::vector<FileSystem> file_systems;
-  for (auto file_system_path : file_system_paths) {
+  for (const auto& file_system_path : file_system_paths) {
     base::FilePath path = base::FilePath::FromUTF8Unsafe(file_system_path);
     std::string file_system_id = RegisterFileSystem(GetDevToolsWebContents(),
                                                     path);
@@ -383,7 +385,7 @@ void CommonWebContentsDelegate::DevToolsAddFileSystem(
   auto pref_service = GetPrefService(GetDevToolsWebContents());
   DictionaryPrefUpdate update(pref_service, prefs::kDevToolsFileSystemPaths);
   update.Get()->SetWithoutPathExpansion(
-      path.AsUTF8Unsafe(), base::Value::CreateNullValue());
+      path.AsUTF8Unsafe(), base::MakeUnique<base::Value>());
 
   web_contents_->CallClientFunction("DevToolsAPI.fileSystemAdded",
                                     file_system_value.get(),
@@ -403,7 +405,7 @@ void CommonWebContentsDelegate::DevToolsRemoveFileSystem(
   DictionaryPrefUpdate update(pref_service, prefs::kDevToolsFileSystemPaths);
   update.Get()->RemoveWithoutPathExpansion(path, nullptr);
 
-  base::StringValue file_system_path_value(path);
+  base::Value file_system_path_value(path);
   web_contents_->CallClientFunction("DevToolsAPI.fileSystemRemoved",
                                     &file_system_path_value,
                                     nullptr, nullptr);
@@ -467,7 +469,7 @@ void CommonWebContentsDelegate::DevToolsSearchInPath(
 void CommonWebContentsDelegate::OnDevToolsSaveToFile(
     const std::string& url) {
   // Notify DevTools.
-  base::StringValue url_value(url);
+  base::Value url_value(url);
   web_contents_->CallClientFunction(
       "DevToolsAPI.savedURL", &url_value, nullptr, nullptr);
 }
@@ -475,7 +477,7 @@ void CommonWebContentsDelegate::OnDevToolsSaveToFile(
 void CommonWebContentsDelegate::OnDevToolsAppendToFile(
     const std::string& url) {
   // Notify DevTools.
-  base::StringValue url_value(url);
+  base::Value url_value(url);
   web_contents_->CallClientFunction(
       "DevToolsAPI.appendedToURL", &url_value, nullptr, nullptr);
 }
@@ -484,9 +486,9 @@ void CommonWebContentsDelegate::OnDevToolsIndexingWorkCalculated(
     int request_id,
     const std::string& file_system_path,
     int total_work) {
-  base::FundamentalValue request_id_value(request_id);
-  base::StringValue file_system_path_value(file_system_path);
-  base::FundamentalValue total_work_value(total_work);
+  base::Value request_id_value(request_id);
+  base::Value file_system_path_value(file_system_path);
+  base::Value total_work_value(total_work);
   web_contents_->CallClientFunction("DevToolsAPI.indexingTotalWorkCalculated",
                                     &request_id_value,
                                     &file_system_path_value,
@@ -497,9 +499,9 @@ void CommonWebContentsDelegate::OnDevToolsIndexingWorked(
     int request_id,
     const std::string& file_system_path,
     int worked) {
-  base::FundamentalValue request_id_value(request_id);
-  base::StringValue file_system_path_value(file_system_path);
-  base::FundamentalValue worked_value(worked);
+  base::Value request_id_value(request_id);
+  base::Value file_system_path_value(file_system_path);
+  base::Value worked_value(worked);
   web_contents_->CallClientFunction("DevToolsAPI.indexingWorked",
                                     &request_id_value,
                                     &file_system_path_value,
@@ -510,8 +512,8 @@ void CommonWebContentsDelegate::OnDevToolsIndexingDone(
     int request_id,
     const std::string& file_system_path) {
   devtools_indexing_jobs_.erase(request_id);
-  base::FundamentalValue request_id_value(request_id);
-  base::StringValue file_system_path_value(file_system_path);
+  base::Value request_id_value(request_id);
+  base::Value file_system_path_value(file_system_path);
   web_contents_->CallClientFunction("DevToolsAPI.indexingDone",
                                     &request_id_value,
                                     &file_system_path_value,
@@ -526,8 +528,8 @@ void CommonWebContentsDelegate::OnDevToolsSearchCompleted(
   for (const auto& file_path : file_paths) {
     file_paths_value.AppendString(file_path);
   }
-  base::FundamentalValue request_id_value(request_id);
-  base::StringValue file_system_path_value(file_system_path);
+  base::Value request_id_value(request_id);
+  base::Value file_system_path_value(file_system_path);
   web_contents_->CallClientFunction("DevToolsAPI.searchCompleted",
                                     &request_id_value,
                                     &file_system_path_value,

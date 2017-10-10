@@ -5,7 +5,9 @@
 #ifndef ATOM_BROWSER_API_ATOM_API_APP_H_
 #define ATOM_BROWSER_API_ATOM_API_APP_H_
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "atom/browser/api/event_emitter.h"
@@ -13,9 +15,14 @@
 #include "atom/browser/browser.h"
 #include "atom/browser/browser_observer.h"
 #include "atom/common/native_mate_converters/callback.h"
-#include "chrome/browser/icon_loader.h"
+#include "base/process/process_iterator.h"
+#include "base/task/cancelable_task_tracker.h"
+#include "chrome/browser/icon_manager.h"
 #include "chrome/browser/process_singleton.h"
+#include "content/public/browser/browser_child_process_observer.h"
 #include "content/public/browser/gpu_data_manager_observer.h"
+#include "content/public/browser/render_process_host.h"
+#include "native_mate/dictionary.h"
 #include "native_mate/handle.h"
 #include "net/base/completion_callback.h"
 
@@ -37,12 +44,27 @@ namespace atom {
 enum class JumpListResult : int;
 #endif
 
+struct ProcessMetric {
+  int type;
+  base::ProcessId pid;
+  std::unique_ptr<base::ProcessMetrics> metrics;
+
+  ProcessMetric(int type,
+                base::ProcessId pid,
+                std::unique_ptr<base::ProcessMetrics> metrics) {
+    this->type = type;
+    this->pid = pid;
+    this->metrics = std::move(metrics);
+  }
+};
+
 namespace api {
 
 class App : public AtomBrowserClient::Delegate,
             public mate::EventEmitter<App>,
             public BrowserObserver,
-            public content::GpuDataManagerObserver {
+            public content::GpuDataManagerObserver,
+            public content::BrowserChildProcessObserver {
  public:
   using FileIconCallback = base::Callback<void(v8::Local<v8::Value>,
                                                const gfx::Image&)>;
@@ -69,6 +91,11 @@ class App : public AtomBrowserClient::Delegate,
       std::unique_ptr<CertificateManagerModel> model);
 #endif
 
+  base::FilePath GetAppPath() const;
+  void RenderProcessReady(content::RenderProcessHost* host);
+  void RenderProcessDisconnected(base::ProcessId host_pid);
+  void PreMainMessageLoopRun();
+
  protected:
   explicit App(v8::Isolate* isolate);
   ~App() override;
@@ -86,11 +113,26 @@ class App : public AtomBrowserClient::Delegate,
   void OnLogin(LoginHandler* login_handler,
                const base::DictionaryValue& request_details) override;
   void OnAccessibilitySupportChanged() override;
+  void OnPreMainMessageLoopRun() override;
 #if defined(OS_MACOSX)
+  void OnWillContinueUserActivity(
+      bool* prevent_default,
+      const std::string& type) override;
+  void OnDidFailToContinueUserActivity(
+      const std::string& type,
+      const std::string& error) override;
   void OnContinueUserActivity(
       bool* prevent_default,
       const std::string& type,
       const base::DictionaryValue& user_info) override;
+  void OnUserActivityWasContinued(
+      const std::string& type,
+      const base::DictionaryValue& user_info) override;
+  void OnUpdateUserActivityState(
+      bool* prevent_default,
+      const std::string& type,
+      const base::DictionaryValue& user_info) override;
+  void OnNewWindowForTab() override;
 #endif
 
   // content::ContentBrowserClient:
@@ -113,7 +155,21 @@ class App : public AtomBrowserClient::Delegate,
   // content::GpuDataManagerObserver:
   void OnGpuProcessCrashed(base::TerminationStatus status) override;
 
+  // content::BrowserChildProcessObserver:
+  void BrowserChildProcessLaunchedAndConnected(
+      const content::ChildProcessData& data) override;
+  void BrowserChildProcessHostDisconnected(
+      const content::ChildProcessData& data) override;
+  void BrowserChildProcessCrashed(
+      const content::ChildProcessData& data, int exit_code) override;
+  void BrowserChildProcessKilled(
+      const content::ChildProcessData& data, int exit_code) override;
+
  private:
+  void SetAppPath(const base::FilePath& app_path);
+  void ChildProcessLaunched(int process_type, base::ProcessHandle handle);
+  void ChildProcessDisconnected(base::ProcessId pid);
+
   // Get/Set the pre-defined path in PathService.
   base::FilePath GetPath(mate::Arguments* args, const std::string& name);
   void SetPath(mate::Arguments* args,
@@ -127,7 +183,9 @@ class App : public AtomBrowserClient::Delegate,
   void ReleaseSingleInstance();
   bool Relaunch(mate::Arguments* args);
   void DisableHardwareAcceleration(mate::Arguments* args);
+  void DisableDomainBlockingFor3DAPIs(mate::Arguments* args);
   bool IsAccessibilitySupportEnabled();
+  void SetAccessibilitySupportEnabled(bool enabled);
   Browser::LoginItemSettings GetLoginItemSettings(mate::Arguments* args);
 #if defined(USE_NSS_CERTS)
   void ImportCertificate(const base::DictionaryValue& options,
@@ -135,6 +193,15 @@ class App : public AtomBrowserClient::Delegate,
 #endif
   void GetFileIcon(const base::FilePath& path,
                    mate::Arguments* args);
+
+  std::vector<mate::Dictionary> GetAppMetrics(v8::Isolate* isolate);
+  v8::Local<v8::Value> GetGPUFeatureStatus(v8::Isolate* isolate);
+  void EnableMixedSandbox(mate::Arguments* args);
+
+#if defined(OS_MACOSX)
+  bool MoveToApplicationsFolder(mate::Arguments* args);
+  bool IsInApplicationsFolder();
+#endif
 
 #if defined(OS_WIN)
   // Get the current Jump List settings.
@@ -149,6 +216,16 @@ class App : public AtomBrowserClient::Delegate,
 #if defined(USE_NSS_CERTS)
   std::unique_ptr<CertificateManagerModel> certificate_manager_model_;
 #endif
+
+  // Tracks tasks requesting file icons.
+  base::CancelableTaskTracker cancelable_task_tracker_;
+
+  base::FilePath app_path_;
+
+  using ProcessMetricMap =
+      std::unordered_map<base::ProcessId,
+                         std::unique_ptr<atom::ProcessMetric>>;
+  ProcessMetricMap app_metrics_;
 
   DISALLOW_COPY_AND_ASSIGN(App);
 };

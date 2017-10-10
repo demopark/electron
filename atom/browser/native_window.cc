@@ -104,8 +104,7 @@ NativeWindow::~NativeWindow() {
 // static
 NativeWindow* NativeWindow::FromWebContents(
     content::WebContents* web_contents) {
-  WindowList& window_list = *WindowList::GetInstance();
-  for (NativeWindow* window : window_list) {
+  for (const auto& window : WindowList::GetWindows()) {
     if (window->web_contents() == web_contents)
       return window;
   }
@@ -159,6 +158,10 @@ void NativeWindow::InitFromOptions(const mate::Dictionary& options) {
   bool has_shadow;
   if (options.Get(options::kHasShadow, &has_shadow)) {
     SetHasShadow(has_shadow);
+  }
+  double opacity;
+  if (options.Get(options::kOpacity, &opacity)) {
+    SetOpacity(opacity);
   }
   bool top;
   if (options.Get(options::kAlwaysOnTop, &top) && top) {
@@ -252,7 +255,7 @@ void NativeWindow::SetSizeConstraints(
   SetContentSizeConstraints(content_constraints);
 }
 
-extensions::SizeConstraints NativeWindow::GetSizeConstraints() {
+extensions::SizeConstraints NativeWindow::GetSizeConstraints() const {
   extensions::SizeConstraints content_constraints = GetContentSizeConstraints();
   extensions::SizeConstraints window_constraints;
   if (content_constraints.HasMaximumSize()) {
@@ -273,7 +276,7 @@ void NativeWindow::SetContentSizeConstraints(
   size_constraints_ = size_constraints;
 }
 
-extensions::SizeConstraints NativeWindow::GetContentSizeConstraints() {
+extensions::SizeConstraints NativeWindow::GetContentSizeConstraints() const {
   return size_constraints_;
 }
 
@@ -283,7 +286,7 @@ void NativeWindow::SetMinimumSize(const gfx::Size& size) {
   SetSizeConstraints(size_constraints);
 }
 
-gfx::Size NativeWindow::GetMinimumSize() {
+gfx::Size NativeWindow::GetMinimumSize() const {
   return GetSizeConstraints().GetMinimumSize();
 }
 
@@ -293,7 +296,7 @@ void NativeWindow::SetMaximumSize(const gfx::Size& size) {
   SetSizeConstraints(size_constraints);
 }
 
-gfx::Size NativeWindow::GetMaximumSize() {
+gfx::Size NativeWindow::GetMaximumSize() const {
   return GetSizeConstraints().GetMaximumSize();
 }
 
@@ -337,7 +340,36 @@ void NativeWindow::SetParentWindow(NativeWindow* parent) {
 void NativeWindow::SetAutoHideCursor(bool auto_hide) {
 }
 
+void NativeWindow::SelectPreviousTab() {
+}
+
+void NativeWindow::SelectNextTab() {
+}
+
+void NativeWindow::MergeAllWindows() {
+}
+
+void NativeWindow::MoveTabToNewWindow() {
+}
+
+void NativeWindow::ToggleTabBar() {
+}
+
+void NativeWindow::AddTabbedWindow(NativeWindow* window) {
+}
+
 void NativeWindow::SetVibrancy(const std::string& filename) {
+}
+
+void NativeWindow::SetTouchBar(
+    const std::vector<mate::PersistentDictionary>& items) {
+}
+
+void NativeWindow::RefreshTouchBarItem(const std::string& item_id) {
+}
+
+void NativeWindow::SetEscapeTouchBarItem(
+    const mate::PersistentDictionary& item) {
 }
 
 void NativeWindow::FocusOnWebView() {
@@ -464,6 +496,11 @@ void NativeWindow::NotifyWindowClosed() {
     observer.OnWindowClosed();
 }
 
+void NativeWindow::NotifyWindowEndSession() {
+  for (NativeWindowObserver& observer : observers_)
+    observer.OnWindowEndSession();
+}
+
 void NativeWindow::NotifyWindowBlur() {
   for (NativeWindowObserver& observer : observers_)
     observer.OnWindowBlur();
@@ -544,6 +581,16 @@ void NativeWindow::NotifyWindowSwipe(const std::string& direction) {
     observer.OnWindowSwipe(direction);
 }
 
+void NativeWindow::NotifyWindowSheetBegin() {
+  for (NativeWindowObserver& observer : observers_)
+    observer.OnWindowSheetBegin();
+}
+
+void NativeWindow::NotifyWindowSheetEnd() {
+  for (NativeWindowObserver& observer : observers_)
+    observer.OnWindowSheetEnd();
+}
+
 void NativeWindow::NotifyWindowLeaveFullScreen() {
   for (NativeWindowObserver& observer : observers_)
     observer.OnWindowLeaveFullScreen();
@@ -563,6 +610,18 @@ void NativeWindow::NotifyWindowExecuteWindowsCommand(
     const std::string& command) {
   for (NativeWindowObserver& observer : observers_)
     observer.OnExecuteWindowsCommand(command);
+}
+
+void NativeWindow::NotifyTouchBarItemInteraction(
+    const std::string& item_id,
+    const base::DictionaryValue& details) {
+  for (NativeWindowObserver& observer : observers_)
+    observer.OnTouchBarItemResult(item_id, details);
+}
+
+void NativeWindow::NotifyNewWindowForTab() {
+  for (NativeWindowObserver &observer : observers_)
+    observer.OnNewWindowForTab();
 }
 
 #if defined(OS_WIN)

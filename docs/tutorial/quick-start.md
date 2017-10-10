@@ -183,7 +183,7 @@ $ ./node_modules/.bin/electron .
 
 #### Windows
 
-```bash
+```
 $ .\node_modules\.bin\electron .
 ```
 
@@ -192,10 +192,10 @@ $ .\node_modules\.bin\electron .
 If you downloaded Electron manually, you can also use the included
 binary to execute your app directly.
 
-#### Windows
+#### macOS
 
 ```bash
-$ .\electron\electron.exe your-app\
+$ ./Electron.app/Contents/MacOS/Electron your-app/
 ```
 
 #### Linux
@@ -204,10 +204,10 @@ $ .\electron\electron.exe your-app\
 $ ./electron/electron your-app/
 ```
 
-#### macOS
+#### Windows
 
-```bash
-$ ./Electron.app/Contents/MacOS/Electron your-app/
+```
+$ .\electron\electron.exe your-app\
 ```
 
 `Electron.app` here is part of the Electron's release package, you can download
@@ -238,7 +238,7 @@ $ npm start
 ```
 
 For more example apps, see the
-[list of boilerplates](http://electron.atom.io/community/#boilerplates)
+[list of boilerplates](https://electron.atom.io/community/#boilerplates)
 created by the awesome electron community.
 
 [share-data]: ../faq.md#how-to-share-data-between-web-pages

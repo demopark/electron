@@ -13,7 +13,7 @@ Chromium, contrôlé par JavaScript.
 ### Processus principal
 
 Dans Electron, le processus qui exécute le script `main` de` package.json`
-est appelé __ le processus principal__. Le script qui s'exécute dans le
+est appelé __le processus principal__. Le script qui s'exécute dans le
 processus principal peut afficher une interface graphique en créant des
 pages Web.
 
@@ -21,7 +21,7 @@ pages Web.
 
 Puisque Electron utilise Chromium pour afficher des pages Web, Chromium
 Multi-process architecture est également utilisé. Chaque page Web d'Electron
-fonctionne avec son propre processus, qui est appelé __le processus de rendu.__.
+fonctionne avec son propre processus, qui est appelé __le processus de rendu__.
 
 Dans les navigateurs normaux, les pages Web sont habituellement exécutées
 dans un environnement aux ressources indépendantes. Les utilisateurs d'électrons
@@ -33,27 +33,26 @@ un système d'exploitation de niveau inférieur d'interactions.
 Le processus principal crée des pages Web en créant des instances `BrowserWindow`.
 Chaque instance `BrowserWindow` exécute la page Web dans son propre processus
 de rendu. Lorsqu'une occurrence `BrowserWindow` est détruite, le processus
-de rendu correspondant est également terminée.
+de rendu correspondant est également terminé.
 
 Le processus principal gère toutes les pages Web et leur processus rendu correspondant.
 Chaque processus de rendu est isolé et ne se soucie que de la page Web en cours
 d'exécution.
 
 Dans les pages Web, l'appel des API relatives aux GUI natives n'est pas autorisé
-car la gestion des ressources natives GUI dans les pages Web sont très dangereuse,
+car la gestion des ressources natives GUI dans les pages Web est très dangereuse,
 il est facile de perdre des ressources. Si vous souhaitez effectuer des opérations
 GUI dans une page Web, le Processus de la page Web doit communiquer avec le
-processus principal pour lui demander d'effectur ces opérations.
+processus principal pour lui demander d'effectuer ces opérations.
 
 Dans Electron, nous avons plusieurs façons de communiquer entre le processus principal et
-le processeurs. Comme [`ipcRenderer`] (../ api / ipc-renderer.md) et [`IpcMain`]
-(../ api / ipc-main.md) pour envoyer des messages, et les [Remote] (../ api / remote.md)
+le processeurs. Comme [`ipcRenderer`](../api/ipc-renderer.md) et [`ipcMain`](../api/ipc-main.md) pour envoyer des messages, et les [Remote](../api/remote.md)
 pour la communication de style RPC. Il y a aussi une entrée de FAQ sur
-[comment partager des données entre des pages Web] [share-data].
+[comment partager des données entre des pages Web][share-data].
 
 ## Écrivez votre première application Electron
 
-Généralement, une application Electron est structurée comme ceci:
+Généralement, une application Electron est structurée comme ceci :
 
 ```text
 your-app/
@@ -65,7 +64,7 @@ your-app/
 Le format de `package.json` est exactement le même que celui des modules de Node, et
 le script spécifié par le champ `main` est le script de démarrage de votre application,
 qui exécutera le processus principal. Un exemple de votre `package.json` peut être
-comme cela:
+comme cela :
 
 ```json
 {
@@ -75,11 +74,11 @@ comme cela:
 }
 ```
 
-__Note__: Si le champ `main` n'est pas présent dans` package.json`, Electron
-tenter de charger un fichier `index.js`.
+__Note__ : Si le champ `main` n'est pas présent dans` package.json`, Electron
+tentera de charger un fichier `index.js`.
 
 Le fichier `main.js` devrait créer des fenêtres et gérer les événements du système.
-Exemple:
+Exemple :
 
 ```javascript
 const {app, BrowserWindow} = require('electron')
@@ -106,7 +105,7 @@ function createWindow () {
 
   // Émis lorsque la fenêtre est fermée.
   win.on('closed', () => {
-    // Déréférencer l'objet fenêtre, habituellement vous stocker des fenêtres
+    // Déréférencer l'objet fenêtre, habituellement vous stockez des fenêtres
     // dans un tableau si votre application prend en charge plusieurs fenêtres,
     // c'est l'heure où vous devez supprimer l'élément correspondant.
     win = null
@@ -140,7 +139,7 @@ app.on('activate', () => {
 // fichiers distincts et les écrire ici.
 ```
 
-Enfin, `index.html` est la page web que vous voulez afficher:
+Enfin, `index.html` est la page web que vous voulez afficher :
 
 ```html
 <!DOCTYPE html>
@@ -170,13 +169,13 @@ tester et vous assurer qu'elle fonctionne comme prévu.
 un module `npm` qui contient des versions pré-compilées d'Electron.
 
 Si vous l'avez installé globalement avec `npm`, vous n'en aurez pas besoin
-dans le répertoire source de votre application:
+dans le répertoire source de votre application :
 
 ```bash
 electron .
 ```
 
-Si vous l'avez installé localement:
+Si vous l'avez installé localement :
 
 #### macOS / Linux
 
@@ -214,20 +213,19 @@ $ ./Electron.app/Contents/MacOS/Electron your-app/
 ```
 
 `Electron.app` fait partie du package de libération de l'Electron, vous pouvez
-télécharger à partir [here](https://github.com/electron/electron/releases).
+télécharger à partir [ici](https://github.com/electron/electron/releases).
 
 ### Exécuter en tant que distribution
 
 Une fois que vous avez terminé d'écrire votre application, vous pouvez
-créer une distribution en suivant le guide [Distribuer une application]
-(./application-distribution.md) puis exécuter l'application packagée.
+créer une distribution en suivant le guide [Distribuer une application](./application-distribution.md) puis exécuter l'application packagée.
 
 ### Essayez cet exemple
 
 Clonez et exécutez le code dans ce didacticiel en utilisant le
-[`electron/electron-quick-start`] (https://github.com/electron/electron-quick-start).
+[`electron/electron-quick-start`](https://github.com/electron/electron-quick-start).
 
-**Note**: Exécuter cela nécessite [Git](https://git-scm.com) et [Node.js](https://nodejs.org/en/download/) (que comprend [npm](https://npmjs.org)) sur votre système.
+**Note** : Exécuter cela nécessite [Git](https://git-scm.com) et [Node.js](https://nodejs.org/en/download/) (que comprend [npm](https://npmjs.org)) sur votre système.
 
 ```bash
 # Clone the repository
@@ -241,7 +239,7 @@ $ npm start
 ```
 
 Pour plus d'exemples app, consultez la section
-[list of boilerplates](http://electron.atom.io/community/#boilerplates)
+[list of boilerplates](https://electron.atom.io/community/#boilerplates)
 Créé par la communauté impressionnante d'électrons.
 
 [share-data]: ../faq.md#how-to-share-data-between-web-pages
